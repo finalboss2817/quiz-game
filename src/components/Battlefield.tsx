@@ -11,7 +11,7 @@ const MOCK_QUESTIONS: Question[] = [
   { id: 5, question: "Who proposed the theory of relativity?", options: ["Isaac Newton", "Niels Bohr", "Albert Einstein", "Marie Curie"], correct: 2, subject: "Physics" },
 ];
 
-export default function Battlefield({ onBack, socket }: { onBack: () => void, socket: any }) {
+export default function Battlefield({ onBack, onScoreSubmit }: { onBack: () => void, onScoreSubmit: (score: number) => void }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState(10);
@@ -58,10 +58,7 @@ export default function Battlefield({ onBack, socket }: { onBack: () => void, so
       setIsFinished(true);
       
       // Emit score to server for leaderboard
-      const user = JSON.parse(localStorage.getItem('hsc_user') || '{}');
-      if (user.username && socket) {
-        socket.emit('battlefield-score', { username: user.username, score });
-      }
+      onScoreSubmit(score);
 
       // Save to local storage for persistence
       const history = JSON.parse(localStorage.getItem('hsc_history') || '[]');

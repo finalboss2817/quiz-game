@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sword, Users, Link as LinkIcon, Trophy, LogOut, Play, Send, Copy, Check } from 'lucide-react';
 import { Question, Player, GameState } from './types';
@@ -16,8 +15,6 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
   
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [, setTick] = useState(0); // For forcing re-renders on socket status
   const [gameState, setGameState] = useState<GameState>({
     status: 'idle',
     roomId: null,
@@ -30,78 +27,19 @@ export default function App() {
   const [view, setView] = useState<'home' | 'battlefield' | 'lobby' | 'game'>('home');
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
 
-  const fetchLeaderboard = async () => {
-    try {
-      const res = await fetch('/api/leaderboard');
-      const data = await res.json();
-      setLeaderboard(data);
-    } catch (err) {
-      console.error(err);
+  const fetchLeaderboard = useCallback(() => {
+    const localData = localStorage.getItem('hsc_global_leaderboard');
+    if (localData) {
+      const parsed = JSON.parse(localData);
+      setLeaderboard(parsed.sort((a: any, b: any) => b.score - a.score).slice(0, 10));
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (view === 'home') {
       fetchLeaderboard();
     }
-  }, [view]);
-
-  useEffect(() => {
-    if (user) {
-      console.log("Connecting to socket...");
-      const newSocket = io({
-        transports: ['websocket', 'polling'],
-        reconnectionAttempts: 5
-      });
-      
-      setSocket(newSocket);
-
-      newSocket.on('connect', () => {
-        console.log("Socket connected:", newSocket.id);
-        setTick(t => t + 1);
-      });
-
-      newSocket.on('disconnect', () => {
-        console.log("Socket disconnected");
-        setTick(t => t + 1);
-      });
-
-      newSocket.on('connect_error', (err) => {
-        console.error("Socket connection error:", err);
-      });
-
-      newSocket.on('room-update', (data) => {
-        console.log("Room update received:", data);
-        setGameState(prev => {
-          const newState = { 
-            ...prev, 
-            players: data.players,
-            status: data.status || prev.status 
-          };
-          console.log("New Game State Players:", newState.players);
-          return newState;
-        });
-      });
-
-      newSocket.on('game-started', (data) => {
-        setGameState(prev => ({ 
-          ...prev, 
-          status: 'playing', 
-          questions: data.questions,
-          currentQuestionIndex: 0
-        }));
-        setView('game');
-      });
-
-      newSocket.on('score-update', (scores) => {
-        setGameState(prev => ({ ...prev, scores }));
-      });
-
-      return () => {
-        newSocket.close();
-      };
-    }
-  }, [user]);
+  }, [view, fetchLeaderboard]);
 
   const handleLogin = (username: string) => {
     const newUser = { username };
@@ -116,27 +54,60 @@ export default function App() {
   };
 
   const createRoom = () => {
-    if (!socket?.connected) {
-      alert("Still connecting to server... please wait a moment.");
-      return;
-    }
     const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    console.log("Creating room:", roomId);
-    socket.emit('join-room', { roomId, username: user?.username });
-    setGameState(prev => ({ ...prev, roomId, status: 'lobby' }));
+    setGameState(prev => ({ 
+      ...prev, 
+      roomId, 
+      status: 'lobby', 
+      players: [{ id: user!.username, username: user!.username }] 
+    }));
     setView('lobby');
   };
 
   const joinRoom = (roomId: string) => {
     const cleanId = roomId.trim().toUpperCase();
-    if (!socket?.connected) {
-      alert("Still connecting to server... please wait a moment.");
-      return;
-    }
-    console.log("Joining room:", cleanId);
-    socket.emit('join-room', { roomId: cleanId, username: user?.username });
-    setGameState(prev => ({ ...prev, roomId: cleanId, status: 'lobby' }));
+    setGameState(prev => ({ 
+      ...prev, 
+      roomId: cleanId, 
+      status: 'lobby',
+      players: [{ id: user!.username, username: user!.username }] 
+    }));
     setView('lobby');
+  };
+
+  const startGame = () => {
+    const questions = generateMockQuestions();
+    setGameState(prev => ({
+      ...prev,
+      status: 'playing',
+      questions,
+      currentQuestionIndex: 0
+    }));
+    setView('game');
+  };
+
+  const submitScore = (score: number) => {
+    // Update local leaderboard
+    const localData = localStorage.getItem('hsc_global_leaderboard');
+    let leaderboardArr = localData ? JSON.parse(localData) : [];
+    
+    const existingIdx = leaderboardArr.findIndex((e: any) => e.username === user?.username);
+    if (existingIdx > -1) {
+      if (score > leaderboardArr[existingIdx].score) {
+        leaderboardArr[existingIdx].score = score;
+      }
+    } else {
+      leaderboardArr.push({ username: user?.username, score });
+    }
+    
+    localStorage.setItem('hsc_global_leaderboard', JSON.stringify(leaderboardArr));
+    fetchLeaderboard();
+
+    // Update current game scores
+    setGameState(prev => ({
+      ...prev,
+      scores: { ...prev.scores, [user!.username]: (prev.scores[user!.username] || 0) + score }
+    }));
   };
 
   if (!user) {
@@ -154,9 +125,9 @@ export default function App() {
           <div className="flex flex-col">
             <h1 className="text-xl font-display font-bold tracking-tight">HSC QUEST</h1>
             <div className="flex items-center gap-1.5">
-              <div className={`w-1.5 h-1.5 rounded-full ${socket?.connected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
               <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                {socket?.connected ? 'Server Online' : 'Connecting...'}
+                Local Mode
               </span>
             </div>
           </div>
@@ -195,7 +166,7 @@ export default function App() {
               />
               <MenuCard 
                 title="Create Room"
-                description="Start a private session and challenge your friends."
+                description="Start a private session (Solo Practice Mode)."
                 icon={<Users className="w-8 h-8 text-indigo-400" />}
                 onClick={createRoom}
                 color="indigo"
@@ -207,7 +178,7 @@ export default function App() {
                 <div className="glass p-8 rounded-[2.5rem]">
                   <div className="flex items-center gap-3 mb-6">
                     <Trophy className="text-amber-400 w-6 h-6" />
-                    <h2 className="text-xl font-display font-bold">Global Hall of Fame</h2>
+                    <h2 className="text-xl font-display font-bold">Local Hall of Fame</h2>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {leaderboard.length > 0 ? (
@@ -221,7 +192,7 @@ export default function App() {
                         </div>
                       ))
                     ) : (
-                      <p className="text-zinc-500 text-sm italic">No legends recorded yet. Be the first!</p>
+                      <p className="text-zinc-500 text-sm italic">No local legends yet. Start a battlefield run!</p>
                     )}
                   </div>
                 </div>
@@ -231,7 +202,7 @@ export default function App() {
 
           {view === 'battlefield' && (
             <motion.div key="battlefield" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <Battlefield onBack={() => setView('home')} socket={socket} />
+              <Battlefield onBack={() => setView('home')} onScoreSubmit={submitScore} />
             </motion.div>
           )}
 
@@ -239,7 +210,7 @@ export default function App() {
             <motion.div key="lobby" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <Lobby 
                 gameState={gameState} 
-                socket={socket!} 
+                onStart={startGame}
                 onBack={() => setView('home')} 
               />
             </motion.div>
@@ -249,7 +220,7 @@ export default function App() {
             <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <Game 
                 gameState={gameState} 
-                socket={socket!} 
+                onScoreSubmit={submitScore}
                 onBack={() => setView('home')} 
               />
             </motion.div>
@@ -262,6 +233,16 @@ export default function App() {
       </footer>
     </div>
   );
+}
+
+function generateMockQuestions() {
+  return [
+    { id: 1, question: "What is the unit of electric current?", options: ["Volt", "Ampere", "Ohm", "Watt"], correct: 1, subject: "Physics" },
+    { id: 2, question: "Which of the following is a noble gas?", options: ["Oxygen", "Nitrogen", "Helium", "Hydrogen"], correct: 2, subject: "Chemistry" },
+    { id: 3, question: "What is the powerhouse of the cell?", options: ["Nucleus", "Ribosome", "Mitochondria", "Golgi Body"], correct: 2, subject: "Biology" },
+    { id: 4, question: "If f(x) = x^2, what is f'(x)?", options: ["x", "2x", "x^2", "2"], correct: 1, subject: "Math" },
+    { id: 5, question: "Which law states that V = IR?", options: ["Newton's Law", "Ohm's Law", "Boyle's Law", "Charles's Law"], correct: 1, subject: "Physics" }
+  ];
 }
 
 function MenuCard({ title, description, icon, onClick, color }: any) {

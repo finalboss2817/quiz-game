@@ -1,20 +1,15 @@
+import { useState } from 'react';
 import { motion } from 'motion/react';
 import { Users, Play, ArrowLeft, Copy, Check, ShieldCheck } from 'lucide-react';
-import { GameState } from '../types';
-import { useState } from 'react';
-import { Socket } from 'socket.io-client';
+import { GameState, Player } from '../types';
 
-export default function Lobby({ gameState, socket, onBack }: { gameState: GameState, socket: Socket, onBack: () => void }) {
+export default function Lobby({ gameState, onStart, onBack }: { gameState: GameState, onStart: () => void, onBack: () => void }) {
   const [copied, setCopied] = useState(false);
 
   const copyId = () => {
     navigator.clipboard.writeText(gameState.roomId || '');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const startGame = () => {
-    socket.emit('start-game', gameState.roomId);
   };
 
   return (
@@ -79,7 +74,7 @@ export default function Lobby({ gameState, socket, onBack }: { gameState: GameSt
         </div>
 
         <button 
-          onClick={startGame}
+          onClick={onStart}
           disabled={gameState.players.length < 1}
           className="w-full neo-btn-primary py-5 text-lg flex items-center justify-center gap-3"
         >

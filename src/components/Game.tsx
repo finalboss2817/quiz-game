@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Timer, Trophy, ArrowRight, CheckCircle2, XCircle, BrainCircuit } from 'lucide-react';
 import { GameState } from '../types';
-import { Socket } from 'socket.io-client';
 
-export default function Game({ gameState, socket, onBack }: { gameState: GameState, socket: Socket, onBack: () => void }) {
+export default function Game({ gameState, onScoreSubmit, onBack }: { gameState: GameState, onScoreSubmit: (score: number) => void, onBack: () => void }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState(15);
@@ -31,11 +30,7 @@ export default function Game({ gameState, socket, onBack }: { gameState: GameSta
     if (isCorrect) {
       const points = timeLeft * 10;
       setLocalScore(prev => prev + points);
-      socket.emit('submit-answer', { 
-        roomId: gameState.roomId, 
-        score: points,
-        username: gameState.players.find(p => p.id === socket.id)?.username 
-      });
+      onScoreSubmit(points);
     }
 
     setTimeout(() => {
