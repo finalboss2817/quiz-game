@@ -50,9 +50,14 @@ async function startServer() {
     console.log("User connected:", socket.id);
 
     socket.on("join-room", ({ roomId, username }) => {
-      socket.join(roomId);
-      if (!rooms.has(roomId)) {
-        rooms.set(roomId, {
+      const cleanId = roomId.trim().toUpperCase();
+      socket.join(cleanId);
+      
+      console.log(`Socket ${socket.id} (${username}) attempting to join room ${cleanId}`);
+
+      if (!rooms.has(cleanId)) {
+        console.log(`Creating new room: ${cleanId}`);
+        rooms.set(cleanId, {
           players: [],
           questions: generateQuestions(),
           currentQuestionIndex: 0,
@@ -61,7 +66,7 @@ async function startServer() {
         });
       }
       
-      const room = rooms.get(roomId);
+      const room = rooms.get(cleanId);
       
       // Prevent duplicate entries for the same socket
       const playerExists = room.players.find((p: any) => p.id === socket.id);
@@ -70,9 +75,10 @@ async function startServer() {
         room.scores[socket.id] = 0;
       }
 
-      console.log(`User ${username} joined room ${roomId}. Total players: ${room.players.length}`);
+      console.log(`Room ${cleanId} now has ${room.players.length} players:`, room.players.map((p: any) => p.username));
 
-      io.to(roomId).emit("room-update", {
+      // Emit to everyone in the room including the sender
+      io.to(cleanId).emit("room-update", {
         players: room.players,
         status: room.status,
       });

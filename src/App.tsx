@@ -17,6 +17,7 @@ export default function App() {
   });
   
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [, setTick] = useState(0); // For forcing re-renders on socket status
   const [gameState, setGameState] = useState<GameState>({
     status: 'idle',
     roomId: null,
@@ -57,6 +58,12 @@ export default function App() {
 
       newSocket.on('connect', () => {
         console.log("Socket connected:", newSocket.id);
+        setTick(t => t + 1);
+      });
+
+      newSocket.on('disconnect', () => {
+        console.log("Socket disconnected");
+        setTick(t => t + 1);
       });
 
       newSocket.on('connect_error', (err) => {
@@ -65,11 +72,15 @@ export default function App() {
 
       newSocket.on('room-update', (data) => {
         console.log("Room update received:", data);
-        setGameState(prev => ({ 
-          ...prev, 
-          players: data.players,
-          status: data.status || prev.status 
-        }));
+        setGameState(prev => {
+          const newState = { 
+            ...prev, 
+            players: data.players,
+            status: data.status || prev.status 
+          };
+          console.log("New Game State Players:", newState.players);
+          return newState;
+        });
       });
 
       newSocket.on('game-started', (data) => {
@@ -105,15 +116,26 @@ export default function App() {
   };
 
   const createRoom = () => {
+    if (!socket?.connected) {
+      alert("Still connecting to server... please wait a moment.");
+      return;
+    }
     const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    socket?.emit('join-room', { roomId, username: user?.username });
+    console.log("Creating room:", roomId);
+    socket.emit('join-room', { roomId, username: user?.username });
     setGameState(prev => ({ ...prev, roomId, status: 'lobby' }));
     setView('lobby');
   };
 
   const joinRoom = (roomId: string) => {
-    socket?.emit('join-room', { roomId, username: user?.username });
-    setGameState(prev => ({ ...prev, roomId, status: 'lobby' }));
+    const cleanId = roomId.trim().toUpperCase();
+    if (!socket?.connected) {
+      alert("Still connecting to server... please wait a moment.");
+      return;
+    }
+    console.log("Joining room:", cleanId);
+    socket.emit('join-room', { roomId: cleanId, username: user?.username });
+    setGameState(prev => ({ ...prev, roomId: cleanId, status: 'lobby' }));
     setView('lobby');
   };
 
@@ -129,7 +151,15 @@ export default function App() {
           <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
             <Sword className="text-white w-6 h-6" />
           </div>
-          <h1 className="text-xl font-display font-bold tracking-tight">HSC QUEST</h1>
+          <div className="flex flex-col">
+            <h1 className="text-xl font-display font-bold tracking-tight">HSC QUEST</h1>
+            <div className="flex items-center gap-1.5">
+              <div className={`w-1.5 h-1.5 rounded-full ${socket?.connected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                {socket?.connected ? 'Server Online' : 'Connecting...'}
+              </span>
+            </div>
+          </div>
         </div>
         
         <div className="flex items-center gap-4">
