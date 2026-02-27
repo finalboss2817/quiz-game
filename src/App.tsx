@@ -47,11 +47,29 @@ export default function App() {
 
   useEffect(() => {
     if (user) {
-      const newSocket = io();
+      console.log("Connecting to socket...");
+      const newSocket = io({
+        transports: ['websocket', 'polling'],
+        reconnectionAttempts: 5
+      });
+      
       setSocket(newSocket);
 
+      newSocket.on('connect', () => {
+        console.log("Socket connected:", newSocket.id);
+      });
+
+      newSocket.on('connect_error', (err) => {
+        console.error("Socket connection error:", err);
+      });
+
       newSocket.on('room-update', (data) => {
-        setGameState(prev => ({ ...prev, players: data.players }));
+        console.log("Room update received:", data);
+        setGameState(prev => ({ 
+          ...prev, 
+          players: data.players,
+          status: data.status || prev.status 
+        }));
       });
 
       newSocket.on('game-started', (data) => {

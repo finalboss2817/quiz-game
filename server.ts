@@ -57,12 +57,20 @@ async function startServer() {
           questions: generateQuestions(),
           currentQuestionIndex: 0,
           scores: {},
+          status: 'lobby'
         });
       }
       
       const room = rooms.get(roomId);
-      room.players.push({ id: socket.id, username });
-      room.scores[socket.id] = 0;
+      
+      // Prevent duplicate entries for the same socket
+      const playerExists = room.players.find((p: any) => p.id === socket.id);
+      if (!playerExists) {
+        room.players.push({ id: socket.id, username });
+        room.scores[socket.id] = 0;
+      }
+
+      console.log(`User ${username} joined room ${roomId}. Total players: ${room.players.length}`);
 
       io.to(roomId).emit("room-update", {
         players: room.players,
