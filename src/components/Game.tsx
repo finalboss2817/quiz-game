@@ -9,6 +9,7 @@ export default function Game({ gameState, onScoreSubmit, onBack }: { gameState: 
   const [timeLeft, setTimeLeft] = useState(15);
   const [isFinished, setIsFinished] = useState(false);
   const [localScore, setLocalScore] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   const currentQuestion = gameState.questions[currentIndex];
 
@@ -21,9 +22,38 @@ export default function Game({ gameState, onScoreSubmit, onBack }: { gameState: 
     }
   }, [timeLeft, isFinished]);
 
-  const handleAnswer = (optionIdx: number) => {
-    if (selectedOption !== null) return;
+  const handleNext = () => {
+    if (currentIndex < gameState.questions.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+      setSelectedOption(null);
+      setTimeLeft(15);
+    } else {
+      setIsFinished(true);
+    }
+  };
+
+  const onDragEnd = (event: any, info: any) => {
+    setIsDragging(false);
+    const x = info.point.x;
+    const y = info.point.y;
     
+    // Collision detection for 4 corners
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const threshold = 180;
+
+    let choice = -1;
+    if (x < threshold && y < threshold + 100) choice = 0; // Top Left
+    else if (x > width - threshold && y < threshold + 100) choice = 1; // Top Right
+    else if (x < threshold && y > height - threshold) choice = 2; // Bottom Left
+    else if (x > width - threshold && y > height - threshold) choice = 3; // Bottom Right
+
+    if (choice !== -1 && selectedOption === null) {
+      submitAnswer(choice);
+    }
+  };
+
+  const submitAnswer = (optionIdx: number) => {
     setSelectedOption(optionIdx);
     const isCorrect = optionIdx === currentQuestion.correct;
     
@@ -35,17 +65,7 @@ export default function Game({ gameState, onScoreSubmit, onBack }: { gameState: 
 
     setTimeout(() => {
       handleNext();
-    }, 1500);
-  };
-
-  const handleNext = () => {
-    if (currentIndex < gameState.questions.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-      setSelectedOption(null);
-      setTimeLeft(15);
-    } else {
-      setIsFinished(true);
-    }
+    }, 1200);
   };
 
   if (isFinished) {
@@ -87,90 +107,95 @@ export default function Game({ gameState, onScoreSubmit, onBack }: { gameState: 
   }
 
   return (
-    <div className="max-w-3xl mx-auto mt-8">
-      {/* Progress & Timer */}
-      <div className="flex justify-between items-center mb-8 px-4">
-        <div className="flex items-center gap-4">
-          <div className="text-sm font-bold text-zinc-500 uppercase tracking-widest">
-            Question {currentIndex + 1} / {gameState.questions.length}
-          </div>
-          <div className="h-1 w-32 bg-zinc-800 rounded-full overflow-hidden">
-            <motion.div 
-              className="h-full bg-indigo-500"
-              initial={{ width: 0 }}
-              animate={{ width: `${((currentIndex + 1) / gameState.questions.length) * 100}%` }}
-            />
-          </div>
+    <div className="relative h-[75vh] w-full overflow-hidden touch-none select-none">
+      {/* HUD */}
+      <div className="absolute top-0 left-0 right-0 flex justify-between items-center p-6 z-50">
+        <div className="flex items-center gap-3 bg-black/40 backdrop-blur-xl px-5 py-2.5 rounded-2xl border border-white/10">
+          <Timer className={`w-5 h-5 ${timeLeft < 5 ? 'text-red-500 animate-pulse' : 'text-indigo-400'}`} />
+          <span className="font-mono font-bold text-lg">{timeLeft}s</span>
         </div>
-        
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${timeLeft < 5 ? 'border-red-500/50 text-red-400 bg-red-500/5' : 'border-zinc-800 text-zinc-400'}`}>
-          <Timer className="w-4 h-4" />
-          <span className="font-mono font-bold">{timeLeft}s</span>
+        <div className="flex items-center gap-3 bg-black/40 backdrop-blur-xl px-5 py-2.5 rounded-2xl border border-white/10">
+          <BrainCircuit className="w-5 h-5 text-emerald-400" />
+          <span className="font-mono font-bold text-lg">{localScore}</span>
         </div>
       </div>
 
-      <AnimatePresence mode="wait">
+      {/* Question Center */}
+      <div className="absolute inset-0 flex items-center justify-center p-12 text-center pointer-events-none">
         <motion.div 
           key={currentIndex}
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          className="glass p-10 rounded-[2.5rem] relative overflow-hidden"
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="max-w-xl"
         >
-          <div className="absolute top-0 right-0 p-6 opacity-10">
-            <BrainCircuit className="w-24 h-24" />
-          </div>
-
-          <div className="mb-2">
-            <span className="px-3 py-1 bg-indigo-500/10 text-indigo-400 rounded-full text-xs font-bold uppercase tracking-wider border border-indigo-500/20">
-              {currentQuestion.subject}
-            </span>
-          </div>
-          
-          <h3 className="text-2xl font-bold mb-10 leading-snug">
+          <span className="inline-block px-4 py-1.5 bg-indigo-500/10 text-indigo-400 rounded-full text-xs font-bold uppercase tracking-[0.2em] mb-4 border border-indigo-500/20">
+            {currentQuestion.subject} • Q{currentIndex + 1}
+          </span>
+          <h2 className="text-3xl md:text-4xl font-bold leading-tight tracking-tight">
             {currentQuestion.question}
-          </h3>
-
-          <div className="grid grid-cols-1 gap-4">
-            {currentQuestion.options.map((option, idx) => {
-              const isSelected = selectedOption === idx;
-              const isCorrect = idx === currentQuestion.correct;
-              const showResult = selectedOption !== null;
-
-              let stateClasses = "border-zinc-800 hover:border-zinc-600 hover:bg-white/5";
-              if (showResult) {
-                if (isCorrect) stateClasses = "border-emerald-500/50 bg-emerald-500/10 text-emerald-400";
-                else if (isSelected) stateClasses = "border-red-500/50 bg-red-500/10 text-red-400";
-                else stateClasses = "opacity-50 border-zinc-800";
-              }
-
-              return (
-                <button
-                  key={idx}
-                  onClick={() => handleAnswer(idx)}
-                  disabled={showResult}
-                  className={`p-5 rounded-2xl border text-left transition-all duration-200 flex items-center justify-between group ${stateClasses}`}
-                >
-                  <span className="font-medium">{option}</span>
-                  {showResult && isCorrect && <CheckCircle2 className="w-5 h-5 text-emerald-400" />}
-                  {showResult && isSelected && !isCorrect && <XCircle className="w-5 h-5 text-red-400" />}
-                </button>
-              );
-            })}
-          </div>
+          </h2>
         </motion.div>
-      </AnimatePresence>
+      </div>
 
-      <div className="mt-8 flex justify-center gap-4">
-        {Object.entries(gameState.scores).map(([id, score]) => {
-          const player = gameState.players.find(p => p.id === id);
+      {/* Portals (Corners) */}
+      <div className="absolute inset-0 pointer-events-none">
+        {currentQuestion.options.map((opt, idx) => {
+          const positions = [
+            "top-6 left-6", "top-6 right-6",
+            "bottom-6 left-6", "bottom-6 right-6"
+          ];
+          const isSelected = selectedOption === idx;
+          const isCorrect = idx === currentQuestion.correct;
+          
           return (
-            <div key={id} className="glass px-4 py-2 rounded-xl flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-indigo-500" />
-              <span className="text-xs font-bold">{player?.username}: {score}</span>
+            <div key={idx} className={`absolute ${positions[idx]} w-40 h-40 md:w-48 md:h-48`}>
+              <motion.div 
+                animate={{ 
+                  scale: isSelected ? 1.15 : (isDragging ? 1.05 : 1),
+                  borderColor: isSelected ? (isCorrect ? '#10b981' : '#ef4444') : 'rgba(255,255,255,0.1)',
+                  backgroundColor: isSelected ? (isCorrect ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)') : 'rgba(255,255,255,0.03)'
+                }}
+                className={`w-full h-full rounded-[2.5rem] border-2 border-dashed flex items-center justify-center p-6 text-center text-sm font-bold transition-all duration-300
+                  ${isSelected ? (isCorrect ? 'text-emerald-400' : 'text-red-400') : 'text-zinc-500'}
+                `}
+              >
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-[10px] opacity-40 uppercase tracking-widest">Portal {idx + 1}</span>
+                  {opt}
+                </div>
+              </motion.div>
             </div>
           );
         })}
+      </div>
+
+      {/* Player Core (The Draggable Orb) */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <motion.div
+          drag
+          dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+          dragElastic={1}
+          onDragStart={() => setIsDragging(true)}
+          onDragEnd={onDragEnd}
+          whileDrag={{ scale: 1.3, cursor: 'grabbing' }}
+          className="w-20 h-20 bg-indigo-600 rounded-full shadow-[0_0_50px_rgba(79,70,229,0.8)] flex items-center justify-center cursor-grab pointer-events-auto z-50 group"
+        >
+          <div className="relative w-full h-full flex items-center justify-center">
+            <div className="absolute inset-0 bg-white/20 rounded-full animate-pulse" />
+            <div className="w-6 h-6 bg-white rounded-full shadow-inner" />
+            <div className="absolute -inset-4 border border-white/10 rounded-full animate-[spin_4s_linear_infinite]" />
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Instructions */}
+      <div className="absolute bottom-32 left-0 right-0 text-center pointer-events-none">
+        <motion.p 
+          animate={{ opacity: isDragging ? 0 : 0.4 }}
+          className="text-[10px] uppercase tracking-[0.5em] font-black text-white"
+        >
+          Drag core to correct portal
+        </motion.p>
       </div>
     </div>
   );
