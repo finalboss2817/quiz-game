@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Timer, Trophy, ArrowRight, CheckCircle2, XCircle, BrainCircuit } from 'lucide-react';
 import { GameState } from '../types';
 
 export default function Game({ gameState, onScoreSubmit, onBack }: { gameState: GameState, onScoreSubmit: (score: number) => void, onBack: () => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState(15);
@@ -34,17 +35,19 @@ export default function Game({ gameState, onScoreSubmit, onBack }: { gameState: 
 
   const onDragEnd = (event: any, info: any) => {
     setIsDragging(false);
-    const x = info.point.x;
-    const y = info.point.y;
+    if (!containerRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = info.point.x - rect.left;
+    const y = info.point.y - rect.top;
     
-    // Collision detection for 4 corners
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    const threshold = 180;
+    const width = rect.width;
+    const height = rect.height;
+    const threshold = 200; // Increased threshold for easier hits
 
     let choice = -1;
-    if (x < threshold && y < threshold + 100) choice = 0; // Top Left
-    else if (x > width - threshold && y < threshold + 100) choice = 1; // Top Right
+    if (x < threshold && y < threshold) choice = 0; // Top Left
+    else if (x > width - threshold && y < threshold) choice = 1; // Top Right
     else if (x < threshold && y > height - threshold) choice = 2; // Bottom Left
     else if (x > width - threshold && y > height - threshold) choice = 3; // Bottom Right
 
@@ -107,7 +110,7 @@ export default function Game({ gameState, onScoreSubmit, onBack }: { gameState: 
   }
 
   return (
-    <div className="relative h-[75vh] w-full overflow-hidden touch-none select-none">
+    <div ref={containerRef} className="relative h-[75vh] w-full overflow-hidden touch-none select-none">
       {/* HUD */}
       <div className="absolute top-0 left-0 right-0 flex justify-between items-center p-6 z-50">
         <div className="flex items-center gap-3 bg-black/40 backdrop-blur-xl px-5 py-2.5 rounded-2xl border border-white/10">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Timer, Trophy, Sword, ArrowLeft, BrainCircuit, CheckCircle2, XCircle, RefreshCcw } from 'lucide-react';
 import { Question } from '../types';
@@ -12,6 +12,7 @@ const MOCK_QUESTIONS: Question[] = [
 ];
 
 export default function Battlefield({ onBack, onScoreSubmit }: { onBack: () => void, onScoreSubmit: (score: number) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState(10);
@@ -33,16 +34,19 @@ export default function Battlefield({ onBack, onScoreSubmit }: { onBack: () => v
 
   const onDragEnd = (event: any, info: any) => {
     setIsDragging(false);
-    const x = info.point.x;
-    const y = info.point.y;
+    if (!containerRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = info.point.x - rect.left;
+    const y = info.point.y - rect.top;
     
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    const threshold = 180;
+    const width = rect.width;
+    const height = rect.height;
+    const threshold = 200;
 
     let choice = -1;
-    if (x < threshold && y < threshold + 100) choice = 0;
-    else if (x > width - threshold && y < threshold + 100) choice = 1;
+    if (x < threshold && y < threshold) choice = 0;
+    else if (x > width - threshold && y < threshold) choice = 1;
     else if (x < threshold && y > height - threshold) choice = 2;
     else if (x > width - threshold && y > height - threshold) choice = 3;
 
@@ -124,7 +128,7 @@ export default function Battlefield({ onBack, onScoreSubmit }: { onBack: () => v
   }
 
   return (
-    <div className="relative h-[75vh] w-full overflow-hidden touch-none select-none">
+    <div ref={containerRef} className="relative h-[75vh] w-full overflow-hidden touch-none select-none">
       {/* HUD */}
       <div className="absolute top-0 left-0 right-0 flex justify-between items-center p-6 z-50">
         <div className="flex flex-col gap-1">
