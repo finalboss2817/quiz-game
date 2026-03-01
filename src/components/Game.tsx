@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
-import { Timer, Trophy, ArrowRight, CheckCircle2, XCircle, BrainCircuit, HelpCircle, Play } from 'lucide-react';
+import { Timer, Trophy, ArrowRight, CheckCircle2, XCircle, BrainCircuit, HelpCircle, Play, Loader2 } from 'lucide-react';
 import { GameState } from '../types';
 
 export default function Game({ gameState, onScoreSubmit, onBack }: { gameState: GameState, onScoreSubmit: (score: number) => void, onBack: () => void }) {
@@ -15,23 +15,34 @@ export default function Game({ gameState, onScoreSubmit, onBack }: { gameState: 
   const [showTutorial, setShowTutorial] = useState(true);
   const [shake, setShake] = useState(false);
 
-  // Core position tracking for proximity glow
   const coreX = useMotionValue(0);
   const coreY = useMotionValue(0);
 
-  const currentQuestion = gameState.questions[currentIndex];
+  const questions = gameState.questions.length > 0 ? gameState.questions : [];
+  const currentQuestion = questions[currentIndex];
+
+  if (questions.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" />
+          <p className="text-zinc-500 font-mono animate-pulse uppercase tracking-[0.3em]">Loading Sector Data...</p>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
-    if (timeLeft > 0 && !isFinished) {
+    if (timeLeft > 0 && !isFinished && questions.length > 0) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
-    } else if (timeLeft === 0 && !isFinished) {
+    } else if (timeLeft === 0 && !isFinished && questions.length > 0) {
       handleNext();
     }
-  }, [timeLeft, isFinished]);
+  }, [timeLeft, isFinished, questions.length]);
 
   const handleNext = () => {
-    if (currentIndex < gameState.questions.length - 1) {
+    if (currentIndex < questions.length - 1) {
       setCurrentIndex(prev => prev + 1);
       setSelectedOption(null);
       setTimeLeft(15);

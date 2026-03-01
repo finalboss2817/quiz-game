@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sword, Users, Link as LinkIcon, Trophy, LogOut, Play, Send, Copy, Check } from 'lucide-react';
+import { Sword, Users, Link as LinkIcon, Trophy, LogOut, Play, Send, Copy, Check, FileText, Sparkles, Loader2, Upload, FileUp } from 'lucide-react';
 import { Question, Player, GameState } from './types';
 
 // Components
@@ -24,14 +24,23 @@ export default function App() {
     scores: {},
   });
 
-  const [view, setView] = useState<'home' | 'battlefield' | 'lobby' | 'game'>('home');
+  const [view, setView] = useState<'home' | 'battlefield' | 'lobby' | 'game' | 'admin'>('home');
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
 
-  const fetchLeaderboard = useCallback(() => {
-    const localData = localStorage.getItem('hsc_global_leaderboard');
-    if (localData) {
-      const parsed = JSON.parse(localData);
-      setLeaderboard(parsed.sort((a: any, b: any) => b.score - a.score).slice(0, 10));
+  const fetchLeaderboard = useCallback(async () => {
+    try {
+      const response = await fetch('/api/leaderboard');
+      const data = await response.json();
+      setLeaderboard(data);
+    } catch (error) {
+      console.error("Failed to fetch leaderboard:", error);
+      // Fallback to local data if API fails
+      const localData = localStorage.getItem('hsc_global_leaderboard');
+      if (localData) {
+        const parsed = JSON.parse(localData);
+        setLeaderboard(parsed.sort((a: any, b: any) => b.score - a.score).slice(0, 10));
+      }
     }
   }, []);
 
@@ -75,19 +84,43 @@ export default function App() {
     setView('lobby');
   };
 
-  const startGame = () => {
-    const questions = generateMockQuestions();
-    setGameState(prev => ({
-      ...prev,
-      status: 'playing',
-      questions,
-      currentQuestionIndex: 0
-    }));
-    setView('game');
+  const startGame = async () => {
+    try {
+      const response = await fetch('/api/questions');
+      const questions = await response.json();
+      
+      setGameState(prev => ({
+        ...prev,
+        status: 'playing',
+        questions: questions.length > 0 ? questions : generateMockQuestions(),
+        currentQuestionIndex: 0
+      }));
+      setView('game');
+    } catch (error) {
+      console.error("Failed to fetch questions:", error);
+      const questions = generateMockQuestions();
+      setGameState(prev => ({
+        ...prev,
+        status: 'playing',
+        questions,
+        currentQuestionIndex: 0
+      }));
+      setView('game');
+    }
   };
 
-  const submitScore = (score: number) => {
-    // Update local leaderboard
+  const submitScore = async (score: number) => {
+    try {
+      await fetch('/api/scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user?.username, score })
+      });
+    } catch (error) {
+      console.error("Failed to submit score:", error);
+    }
+
+    // Update local leaderboard for immediate feedback
     const localData = localStorage.getItem('hsc_global_leaderboard');
     let leaderboardArr = localData ? JSON.parse(localData) : [];
     
@@ -108,6 +141,50 @@ export default function App() {
       ...prev,
       scores: { ...prev.scores, [user!.username]: (prev.scores[user!.username] || 0) + score }
     }));
+  };
+
+  const generateFromPDF = async (file: File, subject: string, adminSecret: string) => {
+    setIsGenerating(true);
+    try {
+      const formData = new FormData();
+      formData.append('pdf', file);
+      formData.append('subject', subject);
+      formData.append('adminSecret', adminSecret);
+
+      const response = await fetch('/api/questions/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      alert(`Successfully scanned PDF and generated ${data.length} questions!`);
+      setView('home');
+    } catch (error: any) {
+      console.error("PDF Scan failed:", error);
+      alert(`PDF Scan failed: ${error.message}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const generateFromSyllabus = async (syllabus: string, subject: string, adminSecret: string) => {
+    setIsGenerating(true);
+    try {
+      const response = await fetch('/api/questions/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ syllabus, subject, adminSecret })
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      alert(`Successfully generated ${data.length} questions from syllabus!`);
+      setView('home');
+    } catch (error: any) {
+      console.error("Generation failed:", error);
+      alert(`Generation failed: ${error.message}`);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   if (!user) {
@@ -172,13 +249,29 @@ export default function App() {
                 color="indigo"
               />
               <JoinCard onJoin={joinRoom} />
+              
+              <MenuCard 
+                title="Syllabus AI"
+                description="Upload or paste your syllabus to generate custom AI questions."
+                icon={<Sparkles className="w-8 h-8 text-amber-400" />}
+                onClick={() => setView('admin')}
+                color="amber"
+              />
 
               {/* Leaderboard Section */}
               <div className="md:col-span-3 mt-8">
                 <div className="glass p-8 rounded-[2.5rem]">
-                  <div className="flex items-center gap-3 mb-6">
-                    <Trophy className="text-amber-400 w-6 h-6" />
-                    <h2 className="text-xl font-display font-bold">Local Hall of Fame</h2>
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <Trophy className="text-amber-400 w-6 h-6" />
+                      <h2 className="text-xl font-display font-bold">Global Hall of Fame</h2>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                        Live Sync
+                      </span>
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {leaderboard.length > 0 ? (
@@ -192,11 +285,22 @@ export default function App() {
                         </div>
                       ))
                     ) : (
-                      <p className="text-zinc-500 text-sm italic">No local legends yet. Start a battlefield run!</p>
+                      <p className="text-zinc-500 text-sm italic">No legends yet. Be the first!</p>
                     )}
                   </div>
                 </div>
               </div>
+            </motion.div>
+          )}
+
+          {view === 'admin' && (
+            <motion.div key="admin" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <SyllabusProcessor 
+                onGenerate={generateFromSyllabus} 
+                onUpload={generateFromPDF}
+                isGenerating={isGenerating}
+                onBack={() => setView('home')} 
+              />
             </motion.div>
           )}
 
@@ -249,6 +353,7 @@ function MenuCard({ title, description, icon, onClick, color }: any) {
   const colors: any = {
     emerald: 'hover:border-emerald-500/50 hover:bg-emerald-500/5',
     indigo: 'hover:border-indigo-500/50 hover:bg-indigo-500/5',
+    amber: 'hover:border-amber-500/50 hover:bg-amber-500/5',
   };
 
   return (
@@ -269,6 +374,135 @@ function MenuCard({ title, description, icon, onClick, color }: any) {
         Launch <Play className="w-4 h-4" />
       </div>
     </motion.button>
+  );
+}
+
+function SyllabusProcessor({ onGenerate, onUpload, isGenerating, onBack }: { onGenerate: (s: string, sub: string, sec: string) => void, onUpload: (f: File, sub: string, sec: string) => void, isGenerating: boolean, onBack: () => void }) {
+  const [syllabus, setSyllabus] = useState('');
+  const [subject, setSubject] = useState('');
+  const [secret, setSecret] = useState('');
+  const [mode, setMode] = useState<'text' | 'pdf'>('text');
+  const [file, setFile] = useState<File | null>(null);
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto mt-12">
+      <div className="glass p-8 rounded-[2.5rem]">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-amber-500/20 rounded-2xl">
+              <FileText className="w-8 h-8 text-amber-400" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-display font-bold">Syllabus Engine v2.0</h2>
+              <p className="text-zinc-400 text-sm">Scan PDFs or paste text to build your bank.</p>
+            </div>
+          </div>
+          <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
+            <button 
+              onClick={() => setMode('text')}
+              className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${mode === 'text' ? 'bg-amber-500 text-black' : 'text-zinc-500 hover:text-white'}`}
+            >
+              Text
+            </button>
+            <button 
+              onClick={() => setMode('pdf')}
+              className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${mode === 'pdf' ? 'bg-amber-500 text-black' : 'text-zinc-500 hover:text-white'}`}
+            >
+              PDF
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="flex flex-col gap-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Subject Area</label>
+            <input 
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="e.g. Biology"
+              className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-amber-500/50"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Admin Secret</label>
+            <input 
+              type="password"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder="••••••••"
+              className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-amber-500/50"
+            />
+          </div>
+        </div>
+
+        {mode === 'text' ? (
+          <div className="flex flex-col gap-2 mb-6">
+            <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Syllabus Content (Format: Term: Definition)</label>
+            <textarea 
+              value={syllabus}
+              onChange={(e) => setSyllabus(e.target.value)}
+              placeholder="Mitosis: Cell division resulting in two identical daughter cells.&#10;Meiosis: Cell division resulting in four daughter cells with half chromosomes.&#10;DNA: The molecule that carries genetic instructions."
+              className="w-full h-48 bg-black/40 border border-white/10 rounded-2xl p-6 text-sm focus:outline-none focus:border-amber-500/50 transition-all resize-none"
+            />
+            <p className="text-[10px] text-zinc-500 italic">Enter at least 4 pairs, one per line.</p>
+          </div>
+        ) : (
+          <div className="mb-6">
+            <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 block mb-2">Upload Syllabus PDF</label>
+            <div className="relative group">
+              <input 
+                type="file" 
+                accept=".pdf"
+                onChange={handleFileChange}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              />
+              <div className={`w-full h-48 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-4 transition-all ${file ? 'border-amber-500/50 bg-amber-500/5' : 'border-white/10 bg-black/40 group-hover:border-white/20'}`}>
+                <div className={`p-4 rounded-full ${file ? 'bg-amber-500 text-black' : 'bg-white/5 text-zinc-500'}`}>
+                  {file ? <FileUp className="w-8 h-8" /> : <Upload className="w-8 h-8" />}
+                </div>
+                <div className="text-center">
+                  <p className={`text-sm font-bold ${file ? 'text-white' : 'text-zinc-400'}`}>
+                    {file ? file.name : 'Click or drag PDF here'}
+                  </p>
+                  <p className="text-[10px] text-zinc-500 mt-1 uppercase tracking-widest">Max size: 5MB</p>
+                </div>
+              </div>
+            </div>
+            <p className="text-[10px] text-zinc-500 italic mt-3">The engine will scan for definitions and learning objectives automatically.</p>
+          </div>
+        )}
+
+        <div className="flex gap-4">
+          <button onClick={onBack} className="neo-btn-secondary flex-1 py-4">
+            Cancel
+          </button>
+          <button 
+            onClick={() => mode === 'text' ? onGenerate(syllabus, subject, secret) : (file && onUpload(file, subject, secret))}
+            disabled={(mode === 'text' ? !syllabus : !file) || !secret || isGenerating}
+            className="neo-btn-primary flex-1 py-4 flex items-center justify-center gap-2 bg-amber-500 text-black border-amber-600 disabled:opacity-50"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-5 h-5" />
+                {mode === 'text' ? 'Build Question Bank' : 'Scan & Build Bank'}
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
